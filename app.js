@@ -1,5 +1,5 @@
 /* =====================================================
-   我的小站 · 完整版（带搜索）
+   我的小站 · 完整版 v2
    ===================================================== */
 
 const store = {
@@ -27,9 +27,12 @@ const state = {
     callRejectProb: 50,
     moodProb: 30, intentProb: 30,
     taMomentsProb: 30,
-    taCommentProb: 50,    
+    taCommentProb: 50,
     searchLinkProb: 10,
-    letterReplyProb: 50
+    letterReplyProb: 50,
+    surveyProb: 5,
+    choiceProb: 5,
+    checkinProb: 5
   }),
   cards: store.get("cards", { categories: [] }),
   pokeTexts: store.get("pokeTexts", ["拍了拍我的头", "拍了拍我的肩膀", "拍了拍我的脸"]),
@@ -39,6 +42,7 @@ const state = {
   emojis: store.get("emojis", []),
   moments: store.get("moments", []),
   water: store.get("water", { date: "", count: 0, goal: 8 }),
+  songs: store.get("songs", []),
   desktopIcons: store.get("desktopIcons", null)
 };
 
@@ -51,6 +55,7 @@ function saveFavTa() { store.set("favoritesTa", state.favoritesTa); }
 function saveEmojis() { store.set("emojis", state.emojis); }
 function saveMoments() { store.set("moments", state.moments); }
 function saveWater() { store.set("water", state.water); }
+function saveSongs() { store.set("songs", state.songs); }
 function saveDesktopIcons() { store.set("desktopIcons", state.desktopIcons); }
 
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
@@ -172,6 +177,29 @@ function tickDesktopTime() {
   if (dt) dt.textContent = `${d.getMonth()+1}/${d.getDate()}`;
 }
 
+const SEARCH_PLATFORMS = [
+  { name: "小红书", icon: "📕", url: "https://www.xiaohongshu.com/search_result?keyword=" },
+  { name: "B站",   icon: "📺", url: "https://search.bilibili.com/all?keyword=" },
+  { name: "微博",   icon: "🔴", url: "https://s.weibo.com/weibo?q=" },
+  { name: "知乎",   icon: "🔵", url: "https://www.zhihu.com/search?type=content&q=" },
+  { name: "豆瓣",   icon: "🟢", url: "https://www.douban.com/search?q=" },
+  { name: "淘宝",   icon: "🛒", url: "https://s.taobao.com/search?q=" },
+  { name: "百度",   icon: "🔍", url: "https://www.baidu.com/s?wd=" },
+  { name: "百度图片", icon: "🖼️", url: "https://image.baidu.com/search?word=" },
+  { name: "抖音",   icon: "🎵", url: "https://www.douyin.com/search/" }
+];
+
+/* ========== 从字卡分类取 */
+function getCardsByCat(catName) {
+  const cat = state.cards.categories.find(c => c.name === catName && c.enabled !== false);
+  if (!cat) return [];
+  return cat.cards.map(c => c.text);
+}
+function drawFromCat(catName) {
+  const list = getCardsByCat(catName);
+  return list.length ? pick(list) : null;
+}
+
 /* ========== 聊天 ========== */
 let currentQuote = null;
 
@@ -238,8 +266,11 @@ function renderMessage(body, m) {
   let inner = "";
   if (m.quote) inner += `<div class="quote" data-quote="${m.quote.id}">${esc(m.quote.text)}</div>`;
   if (m.image) inner += `<img class="msg-img" src="${m.image}">`;
-  else if (m.baiduImg) inner += `<div style="padding:8px;background:#f0f0f0;border-radius:6px;cursor:pointer;" class="baidu-img">🔗 点击查看百度图片：${esc(m.baiduImg)}</div>`;
-  else if (m.isVoice) {
+  else if (m.searchLink) {
+    inner += `<div style="padding:8px;background:#f0f0f0;border-radius:6px;cursor:pointer;" class="search-link">🔍 点击搜索「${esc(m.searchLink.kw)}」· ${esc(m.searchLink.platform.name)}</div>`;
+  } else if (m.baiduImg) {
+    inner += `<div style="padding:8px;background:#f0f0f0;border-radius:6px;cursor:pointer;" class="baidu-img">🔗 点击查看百度图片：${esc(m.baiduImg)}</div>`;
+  } else if (m.isVoice) {
     bubble.classList.add("voice");
     inner += `<span class="wave">🔊</span><span class="dur">${m.voiceDur}"</span>`;
   } else if (m.words && m.words.length) {
@@ -362,19 +393,15 @@ function getAllCards() {
   const list = [];
   state.cards.categories.forEach(cat => {
     if (cat.enabled === false) return;
+    if (["问卷","抉择","吃什么","查岗","音乐","心情","意图"].includes(cat.name)) return;
     cat.cards.forEach(c => list.push(c.text));
   });
   return list;
 }
 function drawCard() { const l = getAllCards(); return l.length ? pick(l) : null; }
-function drawMood() {
-  const l = (state.cards.categories.find(c => c.name === "心情") || {}).cards || [];
-  return l.length ? pick(l).text : null;
-}
-function drawIntent() {
-  const l = (state.cards.categories.find(c => c.name === "意图") || {}).cards || [];
-  return l.length ? pick(l).text : null;
-}
+function drawMood() { const l = getCardsByCat("心情"); return l.length ? pick(l) : null; }
+function drawIntent() { const l = getCardsByCat("意图"); return l.length ? pick(l) : null; }
+
 function sendMessage(text, opts = {}) {
   if (!text && !opts.image && !opts.isVoice) return;
   const d = nowBeijing();
@@ -395,6 +422,7 @@ function sendMessage(text, opts = {}) {
   renderMessages();
   setTimeout(taReply, rand(state.settings.replyDelayMin * 1000, state.settings.replyDelayMax * 1000));
 }
+
 function taReply() {
   const body = document.getElementById("chatBody");
   if (Math.random() * 100 < state.settings.readNoReplyProb) return;
@@ -404,19 +432,39 @@ function taReply() {
   body.scrollTop = body.scrollHeight;
   setTimeout(() => {
     typing.remove();
-    const card = drawCard();
-    if (!card) { addBotMessage("（字卡库是空的，去字卡管理加几张吧）"); return; }
     const r = Math.random() * 100;
+    const searchP = state.settings.searchLinkProb || 0;
     const voiceP = state.settings.voiceProb || 0;
     const imgP = state.settings.imgProb || 0;
     const moodP = state.settings.moodProb || 0;
     const intentP = state.settings.intentProb || 0;
+    const surveyP = state.settings.surveyProb || 0;
+    const choiceP = state.settings.choiceProb || 0;
+    const checkinP = state.settings.checkinProb || 0;
+
+    const card = drawCard();
+    if (!card) { addBotMessage("（字卡库是空的，去字卡管理加几张吧）"); return; }
+
     const opts = {
       isCard: true,
       mood: Math.random() * 100 < moodP ? drawMood() : null,
       intent: Math.random() * 100 < intentP ? drawIntent() : null
     };
-    const searchP = state.settings.searchLinkProb || 0;
+
+    // 随机触发各功能
+    if (r < checkinP) {
+      const c = drawFromCat("查岗");
+      if (c) { addBotMessage(`【查岗】${c}`, opts); return; }
+    } else if (r < checkinP + surveyP) {
+      const q = drawFromCat("问卷");
+      if (q) { addBotMessage(`【TA 问你】${q}`, opts); return; }
+    } else if (r < checkinP + surveyP + choiceP) {
+      const a = drawFromCat("抉择");
+      const b = drawFromCat("抉择");
+      if (a && b && a !== b) { addBotMessage(`【让 TA 选】${a} / ${b}`, opts); return; }
+    }
+
+    // 正常分支
     if (r < searchP) {
       const kwFixed = card.split(/\s+/)[0].slice(0, 10);
       const platform = SEARCH_PLATFORMS[Math.floor(Math.random() * SEARCH_PLATFORMS.length)];
@@ -433,6 +481,7 @@ function taReply() {
     }
   }, rand(800, 1800));
 }
+
 function addBotMessage(text, opts = {}) {
   const d = nowBeijing();
   const msg = {
@@ -441,7 +490,7 @@ function addBotMessage(text, opts = {}) {
     isCard: !!opts.isCard,
     mood: opts.mood || null, intent: opts.intent || null,
     isVoice: opts.isVoice || false, voiceDur: opts.voiceDur || 0,
-        baiduImg: opts.baiduImg || null,
+    baiduImg: opts.baiduImg || null,
     searchLink: opts.searchLink || null,
     words: opts.words || null
   };
@@ -449,6 +498,7 @@ function addBotMessage(text, opts = {}) {
   saveMessages(); renderMessages();
   showNotification(msg);
 }
+
 function showNotification(msg) {
   const chatScreen = document.getElementById("chatApp");
   if (chatScreen && chatScreen.classList.contains("active")) return;
@@ -466,560 +516,6 @@ function showNotification(msg) {
     setTimeout(() => n.remove(), 400);
   }, 3000);
 }
-function initInputBar() {
-  const input = document.getElementById("chatInput");
-  const send = document.getElementById("sendBtn");
-  input.addEventListener("input", () => { send.disabled = !input.value.trim(); });
-  input.addEventListener("keydown", e => {
-    if (e.key === "Enter") {
-      const v = input.value.trim();
-      if (v) { input.value = ""; send.disabled = true; sendMessage(v); }
-    }
-  });
-  send.addEventListener("click", () => {
-    const v = input.value.trim();
-    if (!v) return;
-    input.value = ""; send.disabled = true; sendMessage(v);
-  });
-  document.getElementById("imgBtn").addEventListener("click", () => document.getElementById("imgFile").click());
-  document.getElementById("imgFile").addEventListener("change", async () => {
-    const f = document.getElementById("imgFile").files[0];
-    if (!f) return;
-    const data = await compressImage(f, 1000, 0.8);
-    sendMessage("", { image: data });
-    document.getElementById("imgFile").value = "";
-  });
-  document.getElementById("emojiBtn").addEventListener("click", () => {
-    openModal("表情包", () => {
-      const wrap = document.createElement("div");
-      wrap.innerHTML = `<div class="row"><input class="input" id="emojiInput" placeholder="emoji 或文字"><button class="btn" id="emojiAddBtn">添加</button></div><div class="row"><input type="file" id="emojiFile" accept="image/*" hidden><button class="btn secondary" id="emojiImgBtn" style="width:100%">上传图片</button></div><div id="emojiList"></div>`;
-      const list = wrap.querySelector("#emojiList");
-      function render() {
-        list.innerHTML = "";
-        if (!state.emojis.length) { list.innerHTML = `<div class="empty">还没有表情</div>`; return; }
-        state.emojis.forEach((e, i) => {
-          const item = document.createElement("div");
-          item.className = "list-item";
-          const isImg = e.startsWith("data:");
-          item.innerHTML = `<div class="name" style="font-size:${isImg ? "0" : "22px"};">${isImg ? `<img src="${e}" style="width:40px;height:40px;object-fit:cover;border-radius:4px;">` : esc(e)}</div><div class="actions"><button data-send>发送</button><button class="danger" data-del>删除</button></div>`;
-          item.querySelector("[data-send]").addEventListener("click", () => {
-            if (isImg) sendMessage("", { image: e }); else sendMessage(e);
-            modal.classList.remove("open");
-          });
-          item.querySelector("[data-del]").addEventListener("click", () => { state.emojis.splice(i, 1); saveEmojis(); render(); });
-          list.appendChild(item);
-        });
-      }
-      render();
-      wrap.querySelector("#emojiAddBtn").addEventListener("click", () => {
-        const v = wrap.querySelector("#emojiInput").value.trim();
-        if (!v) return;
-        state.emojis.push(v); saveEmojis(); wrap.querySelector("#emojiInput").value = ""; render();
-      });
-      wrap.querySelector("#emojiImgBtn").addEventListener("click", () => wrap.querySelector("#emojiFile").click());
-      wrap.querySelector("#emojiFile").addEventListener("change", async () => {
-        const f = wrap.querySelector("#emojiFile").files[0];
-        if (!f) return;
-        const data = await compressImage(f, 300, 0.8);
-        state.emojis.push(data); saveEmojis(); render();
-      });
-      return wrap;
-    });
-  });
-  document.getElementById("voiceBtn").addEventListener("click", () => {
-    openModal("发送语音", () => {
-      const wrap = document.createElement("div");
-      wrap.innerHTML = `<div class="row"><input class="input" id="voiceText" placeholder="语音内容"></div><div class="row"><input class="input" id="voiceDurInput" type="number" value="5"></div><button class="btn" id="voiceSendBtn" style="width:100%">发送</button>`;
-      wrap.querySelector("#voiceSendBtn").addEventListener("click", () => {
-        const t = wrap.querySelector("#voiceText").value.trim();
-        const d = Number(wrap.querySelector("#voiceDurInput").value) || 5;
-        if (!t) return;
-        sendMessage(t, { isVoice: true, voiceDur: d });
-        modal.classList.remove("open");
-      });
-      return wrap;
-    });
-  });
-}
-document.getElementById("chatMenuBtn").addEventListener("click", () => {
-  document.getElementById("chatMenuModal").classList.add("open");
-});
-document.getElementById("chatMenuClose").addEventListener("click", () => {
-  document.getElementById("chatMenuModal").classList.remove("open");
-});
-document.querySelectorAll("#chatMenuModal .menu-item").forEach(item => {
-  item.addEventListener("click", () => {
-    const action = item.dataset.action;
-    document.getElementById("chatMenuModal").classList.remove("open");
-    if (action === "search") doSearch();
-    if (action === "fav") showFavorites();
-    if (action === "poke") doPoke();
-    if (action === "call") doCall();
-  });
-});
-function doSearch() {
-  openModal("搜索聊天记录", () => {
-    const wrap = document.createElement("div");
-    wrap.innerHTML = `<div class="row"><input class="input" id="searchKw" placeholder="关键词（可空）"></div><div class="row"><input class="input" type="date" id="searchDate"></div><button class="btn" id="searchBtn" style="width:100%">搜索</button><div id="searchResults" style="margin-top:12px;"></div>`;
-    const results = wrap.querySelector("#searchResults");
-    wrap.querySelector("#searchBtn").addEventListener("click", () => {
-      const kw = wrap.querySelector("#searchKw").value.trim();
-      const dateStr = wrap.querySelector("#searchDate").value;
-      let hits = state.messages.filter(m => m.text && !m.recalled);
-      if (kw) hits = hits.filter(m => m.text.includes(kw));
-      if (dateStr) hits = hits.filter(m => fmtDate(new Date(m.ts)) === dateStr);
-      results.innerHTML = "";
-      if (!hits.length) { results.innerHTML = `<div class="empty">没找到</div>`; return; }
-      hits.forEach(m => {
-        const item = document.createElement("div");
-        item.className = "list-item"; item.style.cursor = "pointer";
-        item.innerHTML = `<div class="name">${m.from === "me" ? "我" : esc(state.settings.taName)}：${esc(m.text)}<br><span style="font-size:12px;color:#999;">${m.time || ""}</span></div>`;
-        item.addEventListener("click", () => {
-          modal.classList.remove("open");
-          setTimeout(() => {
-            const target = document.getElementById("msg-" + m.id);
-            if (target) {
-              target.scrollIntoView({ behavior: "smooth", block: "center" });
-              const rowEl = target.querySelector(".msg-row") || target;
-              rowEl.style.transition = "background 0.3s";
-              rowEl.style.background = "rgba(255,235,59,0.4)";
-              setTimeout(() => { rowEl.style.background = ""; }, 1200);
-            }
-          }, 200);
-        });
-        results.appendChild(item);
-      });
-    });
-    return wrap;
-  });
-}
-function showFavorites() {
-  openModal("收藏", () => {
-    const wrap = document.createElement("div");
-    let currentTab = "mine";
-    wrap.innerHTML = `<div class="fav-tabs"><div class="fav-tab active" data-tab="mine">我的收藏</div><div class="fav-tab" data-tab="ta">TA的收藏</div></div><div id="favList"></div>`;
-    const list = wrap.querySelector("#favList");
-    function render() {
-      const arr = currentTab === "mine" ? state.favoritesMine : state.favoritesTa;
-      list.innerHTML = "";
-      if (!arr.length) { list.innerHTML = `<div class="empty">还没有收藏</div>`; return; }
-      arr.forEach((f, i) => {
-        const item = document.createElement("div");
-        item.className = "fav-item";
-        item.innerHTML = `<div class="fav-text">${esc(f.text)}</div><div class="fav-time">${f.from === "me" ? "我" : "TA"} · ${f.time}</div><div class="actions" style="margin-top:6px;"><button class="danger" data-del>删除</button></div>`;
-        item.querySelector("[data-del]").addEventListener("click", () => {
-          if (currentTab === "mine") { state.favoritesMine.splice(i, 1); saveFavMine(); }
-          else { state.favoritesTa.splice(i, 1); saveFavTa(); }
-          render();
-        });
-        list.appendChild(item);
-      });
-    }
-    render();
-    wrap.querySelectorAll(".fav-tab").forEach(tab => {
-      tab.addEventListener("click", () => {
-        currentTab = tab.dataset.tab;
-        wrap.querySelectorAll(".fav-tab").forEach(t => t.classList.toggle("active", t === tab));
-        render();
-      });
-    });
-    return wrap;
-  });
-}
-function doPoke() {
-  const pokeText = pick(state.pokeTexts) || "拍了拍";
-  state.messages.push({ id: uid(), type: "poke", text: `我${pokeText}`, ts: Date.now() });
-  saveMessages(); renderMessages();
-  if (Math.random() * 100 < state.settings.pokeBackProb) {
-    setTimeout(() => {
-      const backText = pick(state.pokeTexts) || "拍了拍";
-      state.messages.push({ id: uid(), type: "poke", text: `${state.settings.taName}${backText}`, ts: Date.now() });
-      saveMessages(); renderMessages();
-      if (Math.random() * 100 < state.settings.pokeCardProb) {
-        setTimeout(() => {
-          const card = drawCard();
-          if (card) addBotMessage(card, { isCard: true, mood: drawMood(), intent: drawIntent() });
-        }, 800);
-      }
-    }, 1500);
-  }
-}
-let callTimerId = null, callStartTs = 0;
-function doCall() {
-  if (Math.random() * 100 < state.settings.callRejectProb) {
-    state.messages.push({ id: uid(), type: "system", text: `对方已拒绝通话`, ts: Date.now() });
-    saveMessages(); renderMessages(); toast("对方已拒绝");
-    return;
-  }
-  document.getElementById("callName").textContent = state.settings.taName;
-  const av = document.getElementById("callAvatar");
-  if (state.settings.taAvatar) av.innerHTML = `<img src="${state.settings.taAvatar}">`;
-  else av.textContent = "TA";
-  document.getElementById("callTimer").textContent = "00:00:00";
-  showScreen("callScreen");
-  callStartTs = Date.now();
-  callTimerId = setInterval(updateCallTimer, 1000);
-}
-function updateCallTimer() {
-  const el = document.getElementById("callTimer");
-  if (!el) return;
-  const s = Math.floor((Date.now() - callStartTs) / 1000);
-  el.textContent = `${String(Math.floor(s/3600)).padStart(2,"0")}:${String(Math.floor((s%3600)/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
-}
-document.getElementById("hangupBtn").addEventListener("click", () => {
-  clearInterval(callTimerId);
-  const s = Math.floor((Date.now() - callStartTs) / 1000);
-  state.messages.push({ id: uid(), type: "system", text: `通话结束 · 时长 ${Math.floor(s/60)}分${s%60}秒`, ts: Date.now() });
-  saveMessages(); showScreen("chatApp"); renderMessages();
-});
-
-/* ========== 字卡管理 ========== */
-let batchMode = false;
-let selectedCards = new Set();
-function openCards() {
-  showScreen("cardsApp");
-  batchMode = false; selectedCards.clear();
-  document.getElementById("batchBar").style.display = "none";
-  renderCardsPage();
-}
-document.getElementById("batchToggleBtn").addEventListener("click", () => {
-  batchMode = !batchMode; selectedCards.clear();
-  document.getElementById("batchBar").style.display = batchMode ? "flex" : "none";
-  updateBatchCount(); renderCardsPage();
-});
-function updateBatchCount() { document.getElementById("batchCount").textContent = selectedCards.size; }
-function renderCardsPage() {
-  const body = document.getElementById("cardsBody");
-  body.innerHTML = "";
-  if (state.cards.categories.length === 0) {
-    body.innerHTML = `<div class="empty">还没有分类，点右上角“+ 分类”新建</div>`;
-    return;
-  }
-  state.cards.categories.forEach(cat => {
-    const div = document.createElement("div");
-    div.className = "list-item";
-    div.innerHTML = `<div class="name">${esc(cat.name)}<span style="color:#999;font-size:13px;">（${cat.cards.length} 张）</span></div><div class="actions"><button data-toggle>${cat.enabled === false ? "启用" : "停用"}</button><button data-open>打开</button><button class="danger" data-del>删除</button></div>`;
-    div.querySelector("[data-toggle]").addEventListener("click", () => { cat.enabled = cat.enabled === false ? true : false; saveCards(); renderCardsPage(); });
-    div.querySelector("[data-open]").addEventListener("click", () => openCategory(cat.id));
-    div.querySelector("[data-del]").addEventListener("click", () => {
-      if (confirm(`删除分类「${cat.name}」？`)) {
-        state.cards.categories = state.cards.categories.filter(c => c.id !== cat.id);
-        saveCards(); renderCardsPage();
-      }
-    });
-    body.appendChild(div);
-    if (batchMode) {
-      cat.cards.forEach(c => {
-        const item = document.createElement("div");
-        item.className = "list-item"; item.style.paddingLeft = "30px";
-        const checked = selectedCards.has(c.id) ? "checked" : "";
-        item.innerHTML = `<div class="name" style="display:flex;align-items:center;"><input type="checkbox" class="card-check" ${checked} data-id="${c.id}">${esc(c.text)}</div>`;
-        item.querySelector("input").addEventListener("change", e => {
-          if (e.target.checked) selectedCards.add(c.id); else selectedCards.delete(c.id);
-          updateBatchCount();
-        });
-        body.appendChild(item);
-      });
-    }
-  });
-}
-document.getElementById("selectAllBtn").addEventListener("click", () => {
-  const all = [];
-  state.cards.categories.forEach(cat => cat.cards.forEach(c => all.push(c.id)));
-  if (selectedCards.size === all.length) selectedCards.clear();
-  else all.forEach(id => selectedCards.add(id));
-  updateBatchCount(); renderCardsPage();
-});
-document.getElementById("batchCancelBtn").addEventListener("click", () => {
-  batchMode = false; selectedCards.clear();
-  document.getElementById("batchBar").style.display = "none";
-  renderCardsPage();
-});
-document.getElementById("batchDelBtn").addEventListener("click", () => {
-  if (!selectedCards.size) return alert("还没选");
-  if (!confirm(`删除选中的 ${selectedCards.size} 张？`)) return;
-  state.cards.categories.forEach(cat => { cat.cards = cat.cards.filter(c => !selectedCards.has(c.id)); });
-  selectedCards.clear(); saveCards(); updateBatchCount(); renderCardsPage();
-});
-document.getElementById("batchMoveBtn").addEventListener("click", () => {
-  if (!selectedCards.size) return alert("还没选");
-  const names = state.cards.categories.map(c => c.name).join(" / ");
-  const target = prompt(`移动到哪个分类？\n可选：${names}`);
-  if (!target) return;
-  const cat = state.cards.categories.find(c => c.name === target);
-  if (!cat) return alert("没找到这个分类");
-  const moved = [];
-  state.cards.categories.forEach(c => {
-    c.cards = c.cards.filter(card => {
-      if (selectedCards.has(card.id)) { moved.push(card); return false; }
-      return true;
-    });
-  });
-  moved.forEach(card => cat.cards.push(card));
-  selectedCards.clear(); saveCards(); updateBatchCount(); renderCardsPage();
-});
-document.getElementById("batchExportBtn").addEventListener("click", () => {
-  if (!selectedCards.size) return alert("还没选");
-  const out = [];
-  state.cards.categories.forEach(cat => cat.cards.forEach(c => { if (selectedCards.has(c.id)) out.push(c.text); }));
-  const blob = new Blob([out.join("\n")], { type: "text/plain;charset=utf-8" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = "字卡导出.txt"; a.click();
-});
-function openCategory(catId) {
-  const cat = state.cards.categories.find(c => c.id === catId);
-  if (!cat) return;
-  openModal(`分类：${cat.name}`, () => {
-    const wrap = document.createElement("div");
-    wrap.innerHTML = `<div class="row"><input class="input" id="newCardInput" placeholder="输入字卡内容，回车添加"><button class="btn" id="addCardBtn">添加</button></div><div class="row"><button class="btn secondary" id="batchBtn" style="width:100%">批量添加（一行一张）</button></div><div id="cardList"></div>`;
-    const list = wrap.querySelector("#cardList");
-    function renderList() {
-      list.innerHTML = "";
-      if (!cat.cards.length) { list.innerHTML = `<div class="empty">还没有字卡</div>`; return; }
-      cat.cards.forEach((c, i) => {
-        const item = document.createElement("div");
-        item.className = "list-item";
-        item.innerHTML = `<div class="name">${esc(c.text)}</div><div class="actions"><button data-edit>编辑</button><button class="danger" data-del>删除</button></div>`;
-        item.querySelector("[data-edit]").addEventListener("click", () => {
-          const v = prompt("编辑字卡内容：", c.text);
-          if (v === null) return;
-          c.text = v.trim(); saveCards(); renderList(); toast("已保存");
-        });
-        item.querySelector("[data-del]").addEventListener("click", () => { cat.cards.splice(i, 1); saveCards(); renderList(); });
-        list.appendChild(item);
-      });
-    }
-    renderList();
-    const inp = wrap.querySelector("#newCardInput");
-    function addOne() {
-      const v = inp.value.trim(); if (!v) return;
-      cat.cards.push({ id: uid(), text: v });
-      saveCards(); inp.value = ""; renderList(); inp.focus();
-    }
-    wrap.querySelector("#addCardBtn").addEventListener("click", addOne);
-    inp.addEventListener("keydown", e => { if (e.key === "Enter") addOne(); });
-    wrap.querySelector("#batchBtn").addEventListener("click", () => {
-      const text = prompt("批量添加：每行一张");
-      if (!text) return;
-      text.split("\n").map(s => s.trim()).filter(Boolean).forEach(t => {
-        cat.cards.push({ id: uid(), text: t });
-      });
-      saveCards(); renderList();
-    });
-    return wrap;
-  });
-}
-document.getElementById("newCatBtn").addEventListener("click", () => {
-  const name = prompt("分类名称");
-  if (!name) return;
-  state.cards.categories.push({ id: uid(), name: name.trim(), enabled: true, cards: [] });
-  saveCards(); renderCardsPage();
-});
-
-/* ========== 论文摘要 ========== */
-const PAPER_WORDS = {
-  philosophy: ["存在","本体","现象","先验","辩证","扬弃","异化","主体","客体","自在","自为","绝对精神","虚无","荒谬","权力意志","永恒轮回","此在","在世存在","操心","向死而生","逻各斯","理念","实体","属性","因果","必然","偶然","自由","实践","理性","感性","知性","直观","反思","批判","启蒙","救赎","超越","内在","先验统觉","物自体","现象学","存在主义","结构主义","解构","差异","重复","事件","真理","意义"],
-  psychology: ["潜意识","投射","防御机制","依恋","移情","阻抗","自我","本我","超我","认知失调","条件反射","安全基地","内在客体","分离焦虑","俄狄浦斯","集体无意识","原型","阴影","自性","共情","压抑","升华","合理化","退行","认同","内化","客体关系","依恋类型","安全型","回避型","焦虑型","混乱型","创伤","解离","正念","接纳","承诺","价值","行为激活","认知重构","暴露","系统脱敏","催眠","暗示","群体心理","从众","服从","旁观者效应","刻板印象","归因"],
-  sociology: ["结构","异化","规训","场域","惯习","资本","阶层","权力","话语","再生产","合法性","失范","原子化","内卷","区隔","象征暴力","文化资本","社会资本","经济资本","社会事实","角色","越轨","标签","偏差","控制","整合","分化","流动","网络","组织","制度","规范","价值","信仰","仪式","家庭","教育","阶级","性别","种族","城乡","全球化","现代性","后现代","风险社会","消费社会","景观社会","公共领域","市民社会","治理"],
-  literature: ["能指","所指","互文","解构","叙事","视角","隐喻","转喻","象征","原型","陌生化","复调","狂欢","延异","踪迹","文本","作者之死","期待视野","隐含读者","张力","反讽","悖论","含混","细读","新批评","结构主义叙事","功能","序列","行动元","符号","编码","解码","意识形态","霸权","协商","抵抗","大众文化","文化研究","后殖民","女性主义","酷儿","生态批评","数字人文","超文本","互媒","改编","戏仿","拼贴","元叙事","崇高"],
-  physics: ["熵","场","量子","相对","波函数","坍缩","纠缠","时空","引力","能量","守恒","对称","破缺","观测","不确定","叠加","退相干","奇点","维度","真空","粒子","波动","干涉","衍射","偏振","自旋","隧穿","测不准","互补","对应","临界","相变","耗散","混沌","分形","复杂","涌现","信息","比特","熵增","热力学","统计","系综","路径积分","规范","重整化","对称破缺","暗物质","暗能量","统一场"],
-  mysticism: ["能量","频率","共振","业力","脉轮","直觉","显化","共时性","场域","结界","灵性","扬升","暗夜","原型","符号","仪式","召唤","守护","轮回","虚空","冥想","觉察","临在","内在小孩","高我","灵魂","转世","因果","宿命","自由意志","占卜","塔罗","星盘","星座","五行","阴阳","八卦","风水","气场","灵摆","水晶","精油","颂钵","音叉","灵性逃避","灵性危机","整合","接地","净化","祝福"],
-  medicine: ["血压","心率","炎症","代谢","免疫","神经","内分泌","激素","血糖","血脂","睡眠","疲劳","压力","呼吸","消化","循环","肌肉","关节","恢复","调节","细胞","组织","器官","系统","感染","过敏","疼痛","发热","咳嗽","头痛","失眠","焦虑","抑郁","肥胖","营养不良","维生素","矿物质","蛋白质","脂肪","碳水","膳食纤维","肠道菌群","益生菌","抗氧化","自由基","慢性病","急性","预后","康复","预防"]
-};
-const PAPER_TEMPLATES = [
-  (a,b,c,d) => `本文以${a}为切入点，通过${b}的视角，探讨了${c}对${d}的影响。`,
-  (a,b,c,d) => `基于${a}理论，本研究分析了${b}在${c}中的表现，认为${d}是关键变量。`,
-  (a,b,c,d) => `研究发现，${a}通过${b}机制，导致了${c}，这为理解${d}提供了新视角。`,
-  (a,b,c,d) => `从${a}到${b}，${c}的演变揭示了${d}的深层结构。`
-];
-function generatePaper() {
-  const all = [];
-  Object.values(PAPER_WORDS).forEach(arr => arr.forEach(w => all.push(w)));
-  const shuffled = all.sort(() => Math.random() - 0.5);
-  const picked = shuffled.slice(0, 4);
-  const tpl = PAPER_TEMPLATES[Math.floor(Math.random() * PAPER_TEMPLATES.length)];
-  return tpl(...picked);
-}
-function openPaper() {
-  showScreen("paperApp");
-  const body = document.getElementById("paperBody");
-  body.innerHTML = `<div class="paper-box"><div class="paper-tag">论文摘要生成器</div><div class="paper-result" id="paperResult">点下方按钮生成一句摘要</div><button class="paper-btn" id="paperGenBtn">生成</button></div>`;
-  document.getElementById("paperGenBtn").addEventListener("click", () => {
-    document.getElementById("paperResult").textContent = generatePaper();
-  });
-}
-
-/* ========== 塔罗 ========== */
-const TAROT_CARDS = [
-  "愚者","魔术师","女祭司","女皇","皇帝","教皇","恋人","战车","力量","隐士","命运之轮","正义","倒吊人","死神","节制","恶魔","塔","星星","月亮","太阳","审判","世界",
-  "权杖Ace","权杖2","权杖3","权杖4","权杖5","权杖6","权杖7","权杖8","权杖9","权杖10","权杖侍从","权杖骑士","权杖王后","权杖国王",
-  "圣杯Ace","圣杯2","圣杯3","圣杯4","圣杯5","圣杯6","圣杯7","圣杯8","圣杯9","圣杯10","圣杯侍从","圣杯骑士","圣杯王后","圣杯国王",
-  "宝剑Ace","宝剑2","宝剑3","宝剑4","宝剑5","宝剑6","宝剑7","宝剑8","宝剑9","宝剑10","宝剑侍从","宝剑骑士","宝剑王后","宝剑国王",
-  "星币Ace","星币2","星币3","星币4","星币5","星币6","星币7","星币8","星币9","星币10","星币侍从","星币骑士","星币王后","星币国王"
-];
-function openTarot() {
-  showScreen("tarotApp");
-  const body = document.getElementById("tarotBody");
-  body.innerHTML = `<div class="tarot-box"><button class="paper-btn" id="tarotDrawBtn">抽 3 张塔罗</button><div class="tarot-cards" id="tarotCards"></div></div>`;
-  document.getElementById("tarotDrawBtn").addEventListener("click", drawTarot);
-}
-function drawTarot() {
-  const shuffled = [...TAROT_CARDS].sort(() => Math.random() - 0.5);
-  const picked = shuffled.slice(0, 3).map(name => ({ name, reversed: Math.random() < 0.5 }));
-  const wrap = document.getElementById("tarotCards");
-  wrap.innerHTML = "";
-  picked.forEach(c => {
-    const el = document.createElement("div");
-    el.className = "tarot-card";
-    el.innerHTML = `<div style="font-size:24px;">🂠</div><div class="card-pos">点击翻开</div>`;
-    el.addEventListener("click", () => {
-      if (el.classList.contains("flipped")) return;
-      el.classList.add("flipped");
-      if (c.reversed) el.classList.add("reversed");
-      el.innerHTML = `<div class="card-name">${esc(c.name)}</div><div class="card-pos">${c.reversed ? "逆位" : "正位"}</div>`;
-    });
-    wrap.appendChild(el);
-  });
-  document.getElementById("tarotDrawBtn").textContent = "重新抽 3 张";
-}
-
-/* ========== 朋友圈 ========== */
-function openMoments() {
-  showScreen("momentsApp");
-  renderMoments();
-  if (Math.random() * 100 < state.settings.taMomentsProb) {
-    setTimeout(taPostMoment, 1500);
-  }
-}
-function renderMoments() {
-  const body = document.getElementById("momentsBody");
-  body.innerHTML = "";
-  if (!state.moments.length) {
-    body.innerHTML = `<div class="empty">还没有动态，点右上角“+ 发动态”</div>`;
-    return;
-  }
-  [...state.moments].reverse().forEach((m) => {
-    const post = document.createElement("div");
-    post.className = "moment-post";
-    const av = m.from === "me"
-      ? (state.settings.myAvatar ? `<img src="${state.settings.myAvatar}">` : "我")
-      : (state.settings.taAvatar ? `<img src="${state.settings.taAvatar}">` : "TA");
-    const comments = m.comments || [];
-    let commentsHtml = "";
-    if (comments.length) {
-      commentsHtml = `<div class="moment-comments">` + comments.map(c =>
-        `<div class="moment-comment"><span class="mc-name">${esc(c.from === "me" ? state.settings.myName : state.settings.taName)}：</span>${esc(c.text)}</div>`
-      ).join("") + `</div>`;
-    }
-    post.innerHTML = `
-      <div class="moment-head">
-        <div class="avatar">${av}</div>
-        <div>
-          <div class="moment-name">${esc(m.from === "me" ? state.settings.myName : state.settings.taName)}</div>
-          <div class="moment-time">${esc(m.time)}</div>
-        </div>
-      </div>
-      <div class="moment-content">${esc(m.text)}</div>
-      ${m.image ? `<img class="moment-img" src="${m.image}">` : ""}
-      ${commentsHtml}
-      <div class="moment-actions">
-        <span data-like>${m.liked ? "❤️ 已赞" : "🤍 赞"}${m.likes ? ` (${m.likes})` : ""}</span>
-        <span data-comment>💬 评论</span>
-        ${m.from === "ta" ? `<span data-collect>⭐ 收藏</span>` : ""}
-        <span data-del style="margin-left:auto;color:#fa5151;">删除</span>
-      </div>
-    `;
-    post.querySelector("[data-like]").addEventListener("click", () => {
-      m.liked = !m.liked;
-      m.likes = (m.likes || 0) + (m.liked ? 1 : -1);
-      if (m.likes < 0) m.likes = 0;
-      saveMoments(); renderMoments();
-    });
-    post.querySelector("[data-comment]").addEventListener("click", () => {
-      const v = prompt("评论：");
-      if (!v) return;
-      if (!m.comments) m.comments = [];
-      m.comments.push({ from: "me", text: v.trim(), time: fmtFull(nowBeijing()) });
-      saveMoments(); renderMoments();
-    });
-    const collectBtn = post.querySelector("[data-collect]");
-    if (collectBtn) collectBtn.addEventListener("click", () => {
-      state.favoritesMine.push({ id: uid(), text: m.text, from: "ta", ts: Date.now(), time: fmtFull(nowBeijing()) });
-      saveFavMine(); toast("已收藏");
-    });
-    post.querySelector("[data-del]").addEventListener("click", () => {
-      if (!confirm("删除这条动态？")) return;
-      state.moments = state.moments.filter(x => x.id !== m.id);
-      saveMoments(); renderMoments();
-    });
-    body.appendChild(post);
-  });
-}
-function taPostMoment() {
-  const card = drawCard();
-  if (!card) return;
-  const newMoment = {
-    id: uid(),
-    from: "ta",
-    text: card,
-    time: fmtFull(nowBeijing()),
-    likes: 0, liked: false,
-    comments: []
-  };
-  state.moments.push(newMoment);
-  saveMoments();
-  const mScreen = document.getElementById("momentsApp");
-  if (mScreen && mScreen.classList.contains("active")) renderMoments();
-  toast(`${state.settings.taName} 发了一条动态`);
-}
-function taCommentMoment(moment) {
-  if (Math.random() * 100 < state.settings.taCommentProb) {
-    const card = drawCard();
-    if (!card) return;
-    if (!moment.comments) moment.comments = [];
-    moment.comments.push({ from: "ta", text: card, time: fmtFull(nowBeijing()) });
-    saveMoments();
-    const mScreen = document.getElementById("momentsApp");
-    if (mScreen && mScreen.classList.contains("active")) renderMoments();
-    toast(`${state.settings.taName} 评论了你的动态`);
-  }
-}
-document.getElementById("momentsNewBtn").addEventListener("click", () => {
-  openModal("发动态", () => {
-    const wrap = document.createElement("div");
-    wrap.innerHTML = `
-      <div class="row"><textarea class="input" id="momentText" style="height:80px;padding:8px;font-family:inherit;resize:vertical;" placeholder="这一刻的想法…"></textarea></div>
-      <div class="row"><input type="file" id="momentImg" accept="image/*" hidden><button class="btn secondary" id="momentImgBtn" style="width:100%">添加图片</button></div>
-      <div id="momentImgPreview"></div>
-      <button class="btn" id="momentPostBtn" style="width:100%;margin-top:10px;">发表</button>
-    `;
-    let imgData = null;
-    wrap.querySelector("#momentImgBtn").addEventListener("click", () => wrap.querySelector("#momentImg").click());
-    wrap.querySelector("#momentImg").addEventListener("change", async () => {
-      const f = wrap.querySelector("#momentImg").files[0];
-      if (!f) return;
-      imgData = await compressImage(f, 800, 0.8);
-      wrap.querySelector("#momentImgPreview").innerHTML = `<img src="${imgData}" style="max-width:100%;border-radius:8px;margin-top:8px;">`;
-    });
-    wrap.querySelector("#momentPostBtn").addEventListener("click", () => {
-      const text = wrap.querySelector("#momentText").value.trim();
-      if (!text && !imgData) return alert("写点什么或者加张图吧");
-      const newMoment = {
-        id: uid(), from: "me", text: text || "[图片]",
-        image: imgData,
-        time: fmtFull(nowBeijing()),
-        likes: 0, liked: false,
-        comments: []
-      };
-      state.moments.push(newMoment);
-      saveMoments(); modal.classList.remove("open"); renderMoments();
-      setTimeout(() => taCommentMoment(newMoment), rand(2000, 5000));
-    });
-    return wrap;
-  });
-});
-
 /* ========== 抉择 ========== */
 function openChoice() {
   showScreen("choiceApp");
@@ -1146,17 +642,6 @@ function renderWater() {
 }
 
 /* ========== 搜索 ========== */
-const SEARCH_PLATFORMS = [
-  { name: "小红书", icon: "📕", url: "https://www.xiaohongshu.com/search_result?keyword=" },
-  { name: "B站",   icon: "📺", url: "https://search.bilibili.com/all?keyword=" },
-  { name: "微博",   icon: "🔴", url: "https://s.weibo.com/weibo?q=" },
-  { name: "知乎",   icon: "🔵", url: "https://www.zhihu.com/search?type=content&q=" },
-  { name: "豆瓣",   icon: "🟢", url: "https://www.douban.com/search?q=" },
-  { name: "淘宝",   icon: "🛒", url: "https://s.taobao.com/search?q=" },
-  { name: "百度",   icon: "🔍", url: "https://www.baidu.com/s?wd=" },
-  { name: "百度图片", icon: "🖼️", url: "https://image.baidu.com/search?word=" },
-  { name: "抖音",   icon: "🎵", url: "https://www.douyin.com/search/" }
-];
 function openSearch() {
   showScreen("searchApp");
   const body = document.getElementById("searchBody");
@@ -1191,46 +676,33 @@ function openSurvey() {
 }
 function renderSurvey() {
   const body = document.getElementById("surveyBody");
-  const questions = store.get("surveyQs", []);
+  const questions = getCardsByCat("问卷");
   const answers = store.get("surveyAs", []);
   body.innerHTML = `
     <div class="paper-box">
-      <button class="paper-btn" id="surveyNewBtn">出题给 TA</button>
-      <button class="paper-btn" id="surveyTaBtn" style="background:#576b95;">让 TA 问我</button>
-      <div class="paper-tag">题库（${questions.length} 题）</div>
+      <button class="paper-btn" id="surveyTaBtn" style="background:#576b95;">让 TA 随机问我</button>
+      <div class="paper-tag">问卷库（${questions.length} 题，在字卡管理「问卷」分类里加）</div>
       <div id="surveyQList"></div>
       <div class="paper-tag" style="margin-top:16px;">作答记录（${answers.length} 条）</div>
       <div id="surveyAList"></div>
     </div>
   `;
-  // 题库列表
   const qList = body.querySelector("#surveyQList");
-  if (!questions.length) qList.innerHTML = `<div class="empty">还没有题</div>`;
-  else questions.forEach((q, i) => {
+  if (!questions.length) qList.innerHTML = `<div class="empty">还没有题，去字卡管理加「问卷」分类</div>`;
+  else questions.forEach(q => {
     const item = document.createElement("div");
     item.className = "list-item";
-    item.innerHTML = `<div class="name">${esc(q.text)}</div><div class="actions">
-      <button data-ask>问 TA</button>
-      <button class="danger" data-del>删除</button>
-    </div>`;
+    item.innerHTML = `<div class="name">${esc(q)}</div><div class="actions"><button data-ask>问 TA</button></div>`;
     item.querySelector("[data-ask]").addEventListener("click", () => {
       const card = drawCard();
       const ans = card || "……";
-      const record = { q: q.text, a: ans, who: "ta", time: fmtFull(nowBeijing()) };
-      answers.push(record);
+      answers.push({ q, a: ans, who: "ta", time: fmtFull(nowBeijing()) });
       store.set("surveyAs", answers);
-      toast(`TA 答：${ans}`);
-      sendMessage(`【问卷】${q.text}\nTA 答：${ans}`);
-      renderSurvey();
-    });
-    item.querySelector("[data-del]").addEventListener("click", () => {
-      questions.splice(i, 1);
-      store.set("surveyQs", questions);
+      sendMessage(`【问卷】${q}\nTA 答：${ans}`);
       renderSurvey();
     });
     qList.appendChild(item);
   });
-  // 作答记录
   const aList = body.querySelector("#surveyAList");
   if (!answers.length) aList.innerHTML = `<div class="empty">还没有记录</div>`;
   else [...answers].reverse().forEach(a => {
@@ -1239,20 +711,9 @@ function renderSurvey() {
     item.innerHTML = `<div class="name"><b>${esc(a.q)}</b><br>答：${esc(a.a)}<br><span style="font-size:12px;color:#999;">${esc(a.time)}</span></div>`;
     aList.appendChild(item);
   });
-  // 出题
-  body.querySelector("#surveyNewBtn").addEventListener("click", () => {
-    const t = prompt("输入题目：");
-    if (!t) return;
-    questions.push({ text: t.trim(), ts: Date.now() });
-    store.set("surveyQs", questions);
-    renderSurvey();
-  });
-  // TA 问我
   body.querySelector("#surveyTaBtn").addEventListener("click", () => {
-    const card = drawCard();
-    if (!card) return toast("字卡库空了");
-    const q = card;
-    // 从 SEARCH_PLATFORMS 随机一个
+    const q = drawFromCat("问卷");
+    if (!q) return toast("问卷库空了，去加几张");
     const pf = SEARCH_PLATFORMS[Math.floor(Math.random() * SEARCH_PLATFORMS.length)];
     if (confirm(`TA 问你：${q}\n\n（点确定用 ${pf.name} 搜索，点取消跳过）`)) {
       window.open(pf.url + encodeURIComponent(q), "_blank");
@@ -1268,42 +729,27 @@ function openLetters() {
 function renderLetters() {
   const body = document.getElementById("lettersBody");
   const letters = store.get("letters", []);
-  body.innerHTML = `
-    <div class="paper-box">
-      <div class="paper-tag">信件（${letters.length} 封）</div>
-      <div id="letterList"></div>
-    </div>
-  `;
+  body.innerHTML = `<div class="paper-box"><div class="paper-tag">信件（${letters.length} 封）</div><div id="letterList"></div></div>`;
   const list = body.querySelector("#letterList");
   if (!letters.length) list.innerHTML = `<div class="empty">还没有信件，点右上角“+ 写信”</div>`;
   else [...letters].reverse().forEach(l => {
     const item = document.createElement("div");
     item.className = "letter-item" + (l.from === "ta" ? " from-ta" : "");
-    item.innerHTML = `
-      <div class="letter-subject">${l.from === "me" ? "我 → TA" : "TA → 我"}</div>
-      <div class="letter-body">${esc(l.text)}</div>
-      <div class="letter-time">${esc(l.time)}</div>
-    `;
+    item.innerHTML = `<div class="letter-subject">${l.from === "me" ? "我 → TA" : "TA → 我"}</div><div class="letter-body">${esc(l.text)}</div><div class="letter-time">${esc(l.time)}</div>`;
     list.appendChild(item);
   });
 }
 document.getElementById("lettersNewBtn").addEventListener("click", () => {
   openModal("写信给 TA", () => {
     const wrap = document.createElement("div");
-    wrap.innerHTML = `
-      <div class="row"><textarea class="input" id="letterText" style="height:120px;padding:8px;font-family:inherit;resize:vertical;" placeholder="写点什么…"></textarea></div>
-      <button class="btn" id="letterSendBtn" style="width:100%">寄出</button>
-    `;
+    wrap.innerHTML = `<div class="row"><textarea class="input" id="letterText" style="height:120px;padding:8px;font-family:inherit;resize:vertical;" placeholder="写点什么…"></textarea></div><button class="btn" id="letterSendBtn" style="width:100%">寄出</button>`;
     wrap.querySelector("#letterSendBtn").addEventListener("click", () => {
       const t = wrap.querySelector("#letterText").value.trim();
       if (!t) return;
       const letters = store.get("letters", []);
       letters.push({ id: uid(), from: "me", text: t, time: fmtFull(nowBeijing()) });
       store.set("letters", letters);
-      modal.classList.remove("open");
-      renderLetters();
-      toast("已寄出");
-      // TA 按概率回信
+      modal.classList.remove("open"); renderLetters(); toast("已寄出");
       const replyProb = state.settings.letterReplyProb || 50;
       if (Math.random() * 100 < replyProb) {
         setTimeout(() => {
@@ -1330,22 +776,13 @@ function openShopping() {
 function renderShopping() {
   const body = document.getElementById("shoppingBody");
   const items = store.get("shopItems", []);
-  body.innerHTML = `
-    <div class="paper-box">
-      <div class="paper-tag">商品（${items.length} 个）</div>
-      <div id="shopList"></div>
-    </div>
-  `;
+  body.innerHTML = `<div class="paper-box"><div class="paper-tag">商品（${items.length} 个）</div><div id="shopList"></div></div>`;
   const list = body.querySelector("#shopList");
   if (!items.length) list.innerHTML = `<div class="empty">还没有商品，点右上角“+ 添加”</div>`;
   else items.forEach((it, i) => {
     const item = document.createElement("div");
     item.className = "list-item";
-    item.innerHTML = `<div class="name">${esc(it.name)}</div><div class="actions">
-      <button data-go>去淘宝</button>
-      <button data-fav>收藏</button>
-      <button class="danger" data-del>删除</button>
-    </div>`;
+    item.innerHTML = `<div class="name">${esc(it.name)}</div><div class="actions"><button data-go>去淘宝</button><button data-fav>收藏</button><button class="danger" data-del>删除</button></div>`;
     item.querySelector("[data-go]").addEventListener("click", () => {
       window.open(`https://s.taobao.com/search?q=${encodeURIComponent(it.name)}`, "_blank");
     });
@@ -1356,9 +793,7 @@ function renderShopping() {
       toast("已收藏");
     });
     item.querySelector("[data-del]").addEventListener("click", () => {
-      items.splice(i, 1);
-      store.set("shopItems", items);
-      renderShopping();
+      items.splice(i, 1); store.set("shopItems", items); renderShopping();
     });
     list.appendChild(item);
   });
@@ -1373,40 +808,28 @@ document.getElementById("shoppingAddBtn").addEventListener("click", () => {
 });
 
 /* ========== 吃什么 ========== */
-const FOOD_LIST = [
-  "火锅","麻辣烫","烤肉","日料","寿司","拉面","汉堡","披萨","炸鸡","沙拉",
-  "川菜","粤菜","湘菜","东北菜","兰州拉面","沙县小吃","黄焖鸡","麻辣香锅",
-  "泰餐","韩餐","越南粉","印度咖喱","墨西哥卷","意大利面","法餐","牛排",
-  "甜品","蛋糕","冰淇淋","奶茶","咖啡","布丁","舒芙蕾","提拉米苏",
-  "小笼包","煎饺","馄饨","粥","炒饭","拌面","盖浇饭","便当"
-];
 function openEat() {
   showScreen("eatApp");
   renderEat();
 }
 function renderEat() {
   const body = document.getElementById("eatBody");
+  const menu = getCardsByCat("吃什么");
   body.innerHTML = `
     <div class="eat-result" id="eatResult">今天吃什么呢？</div>
     <button class="paper-btn" id="eatBtn">随机抽一个</button>
-    <div class="row"><input class="input" id="eatCustom" placeholder="或者输入自己想吃的"><button class="btn" id="eatSearchBtn">搜索</button></div>
+    <div class="paper-tag">菜单库（${menu.length} 个，在字卡管理「吃什么」分类里加）</div>
   `;
   body.querySelector("#eatBtn").addEventListener("click", () => {
-    const f = FOOD_LIST[Math.floor(Math.random() * FOOD_LIST.length)];
+    const list = menu.length ? menu : ["火锅","麻辣烫","烤肉","日料","寿司","拉面","汉堡","披萨","炸鸡","沙拉","川菜","粤菜","湘菜","东北菜","泰餐","韩餐","意大利面","牛排","甜品","蛋糕","冰淇淋","奶茶","咖啡","小笼包","煎饺","馄饨","炒饭","拌面"];
+    const f = list[Math.floor(Math.random() * list.length)];
     body.querySelector("#eatResult").textContent = f;
-    // 生成搜索链接
     const pf = SEARCH_PLATFORMS[Math.floor(Math.random() * SEARCH_PLATFORMS.length)];
     setTimeout(() => {
-      if (confirm(`吃「${f}」？\n\n点确定用 ${pf.name} 搜索这道菜`)) {
+      if (confirm(`吃「${f}」？\n\n点确定用 ${pf.name} 搜索`)) {
         window.open(pf.url + encodeURIComponent(f), "_blank");
       }
     }, 300);
-  });
-  body.querySelector("#eatSearchBtn").addEventListener("click", () => {
-    const v = body.querySelector("#eatCustom").value.trim();
-    if (!v) return;
-    const pf = SEARCH_PLATFORMS[0];
-    window.open(pf.url + encodeURIComponent(v), "_blank");
   });
 }
 
@@ -1433,8 +856,8 @@ function renderCheckin() {
     list.appendChild(item);
   });
   body.querySelector("#checkinBtn").addEventListener("click", () => {
-    const card = drawCard();
-    if (!card) return toast("字卡库空了，去加几张查岗字卡");
+    const card = drawFromCat("查岗") || drawCard();
+    if (!card) return toast("字卡库空了");
     body.querySelector("#checkinResult").textContent = card;
     records.push({ text: card, time: fmtFull(nowBeijing()) });
     store.set("checkinRecords", records);
@@ -1449,6 +872,11 @@ let pomoMode = "专注";
 function openPomodoro() {
   showScreen("pomodoroApp");
   renderPomodoro();
+}
+function fmtPomoTime(s) {
+  const m = Math.floor(s / 60);
+  const ss = s % 60;
+  return `${String(m).padStart(2,"0")}:${String(ss).padStart(2,"0")}`;
 }
 function renderPomodoro() {
   const body = document.getElementById("pomodoroBody");
@@ -1483,7 +911,6 @@ function renderPomodoro() {
           store.set("pomoDone", d);
         }
         alert(`${pomoMode}结束！`);
-        toast(`${pomoMode}完成`);
         renderPomodoro();
       }
     }, 1000);
@@ -1505,11 +932,6 @@ function renderPomodoro() {
     });
   });
 }
-function fmtPomoTime(s) {
-  const m = Math.floor(s / 60);
-  const ss = s % 60;
-  return `${String(m).padStart(2,"0")}:${String(ss).padStart(2,"0")}`;
-}
 
 /* ========== 音乐 ========== */
 function openMusic() {
@@ -1518,50 +940,36 @@ function openMusic() {
 }
 function renderMusic() {
   const body = document.getElementById("musicBody");
-  const songs = store.get("songs", []);
+  const songs = getCardsByCat("音乐");
   body.innerHTML = `
     <div class="paper-box">
       <button class="paper-btn" id="musicRandomBtn">随机播放一首</button>
-      <div class="paper-tag">歌单（${songs.length} 首）</div>
+      <div class="paper-tag">歌单（${songs.length} 首，在字卡管理「音乐」分类里加，格式：歌名|链接）</div>
       <div id="songList"></div>
     </div>
   `;
   const list = body.querySelector("#songList");
-  if (!songs.length) list.innerHTML = `<div class="empty">还没有歌，点右上角“+ 添加”</div>`;
-  else songs.forEach((s, i) => {
+  if (!songs.length) list.innerHTML = `<div class="empty">还没有歌</div>`;
+  else songs.forEach(s => {
+    const parts = s.split("|");
+    const name = parts[0], url = parts[1] || "";
     const item = document.createElement("div");
     item.className = "list-item";
-    item.innerHTML = `<div class="name">${esc(s.name)}</div><div class="actions">
-      <button data-go>播放</button>
-      <button class="danger" data-del>删除</button>
-    </div>`;
+    item.innerHTML = `<div class="name">${esc(name)}</div><div class="actions"><button data-go>播放</button></div>`;
     item.querySelector("[data-go]").addEventListener("click", () => {
-      window.open(s.url, "_blank");
-    });
-    item.querySelector("[data-del]").addEventListener("click", () => {
-      songs.splice(i, 1);
-      store.set("songs", songs);
-      renderMusic();
+      if (url) window.open(url, "_blank");
+      else toast("没有链接");
     });
     list.appendChild(item);
   });
   body.querySelector("#musicRandomBtn").addEventListener("click", () => {
     if (!songs.length) return toast("还没有歌");
     const s = songs[Math.floor(Math.random() * songs.length)];
-    window.open(s.url, "_blank");
-    toast(`播放：${s.name}`);
+    const parts = s.split("|");
+    if (parts[1]) window.open(parts[1], "_blank");
+    toast(`播放：${parts[0]}`);
   });
 }
-document.getElementById("musicAddBtn").addEventListener("click", () => {
-  const name = prompt("歌名：");
-  if (!name) return;
-  const url = prompt("链接（网易云/QQ音乐）：");
-  if (!url) return;
-  const songs = store.get("songs", []);
-  songs.push({ id: uid(), name: name.trim(), url: url.trim() });
-  store.set("songs", songs);
-  renderMusic();
-});
 
 /* ========== 推书 ========== */
 function openBooks() {
@@ -1581,7 +989,7 @@ function renderBooks() {
     if (!cards.length) return toast("先加字卡");
     const kw = cards[Math.floor(Math.random() * cards.length)].split(/\s+/)[0].slice(0, 10);
     const url = `https://search.douban.com/book/subject_search?search_text=${encodeURIComponent(kw)}`;
-    body.querySelector("#bookResult").innerHTML = `关键词：<b>${esc(kw)}</b><br><a href="${url}" target="_blank">去豆瓣搜索 →</a>`;
+    body.querySelector("#bookResult").innerHTML = `关键词：<b>${esc(kw)}</b><br><a href="${url}" target="_blank" style="color:#07c160;">去豆瓣搜索 →</a>`;
   });
 }
 
@@ -1618,6 +1026,10 @@ function renderSettingsPage() {
     <div class="list-item"><div class="name">已读不回（${s.readNoReplyProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.readNoReplyProb}" data-range="readNoReplyProb"></div></div>
     <div class="list-item"><div class="name">语音概率（${s.voiceProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.voiceProb}" data-range="voiceProb"></div></div>
     <div class="list-item"><div class="name">图片概率（${s.imgProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.imgProb}" data-range="imgProb"></div></div>
+    <div class="list-item"><div class="name">随机搜索链接（${s.searchLinkProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.searchLinkProb}" data-range="searchLinkProb"></div></div>
+    <div class="list-item"><div class="name">问卷触发（${s.surveyProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.surveyProb}" data-range="surveyProb"></div></div>
+    <div class="list-item"><div class="name">抉择触发（${s.choiceProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.choiceProb}" data-range="choiceProb"></div></div>
+    <div class="list-item"><div class="name">查岗触发（${s.checkinProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.checkinProb}" data-range="checkinProb"></div></div>
     <div class="list-item"><div class="name">拍一拍回拍（${s.pokeBackProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.pokeBackProb}" data-range="pokeBackProb"></div></div>
     <div class="list-item"><div class="name">拍一拍触发字卡（${s.pokeCardProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.pokeCardProb}" data-range="pokeCardProb"></div></div>
     <div class="list-item"><div class="name">通话拒绝（${s.callRejectProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.callRejectProb}" data-range="callRejectProb"></div></div>
@@ -1625,7 +1037,6 @@ function renderSettingsPage() {
     <div class="list-item"><div class="name">意图触发（${s.intentProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.intentProb}" data-range="intentProb"></div></div>
     <div class="list-item"><div class="name">对方发朋友圈（${s.taMomentsProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.taMomentsProb}" data-range="taMomentsProb"></div></div>
     <div class="list-item"><div class="name">对方评论（${s.taCommentProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.taCommentProb}" data-range="taCommentProb"></div></div>
-    <div class="list-item"><div class="name">随机搜索链接（${s.searchLinkProb}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.searchLinkProb}" data-range="searchLinkProb"></div></div>
     <div class="list-item"><div class="name">对方回信概率（${s.letterReplyProb || 50}%）</div><div class="actions"><input type="range" min="0" max="100" value="${s.letterReplyProb || 50}" data-range="letterReplyProb"></div></div>
     <div class="list-item"><div class="name">拍一拍文案库</div><div class="actions"><button data-pokemgr>管理（${state.pokeTexts.length}）</button></div></div>`;
   body.querySelectorAll("[data-edit]").forEach(btn => {
@@ -1703,6 +1114,14 @@ function init() {
   setInterval(tickDesktopTime, 1000 * 30);
   initInputBar();
   applyAppearance();
+
+  document.querySelectorAll("[data-app]").forEach(el => {
+    el.addEventListener("click", () => {
+      const app = el.dataset.app;
+      if (app === "settings") openSettings();
+    });
+  });
+
   if (state.cards.categories.length === 0) {
     state.cards.categories.push({
       id: uid(), name: "日常", enabled: true,
@@ -1714,8 +1133,23 @@ function init() {
     });
     state.cards.categories.push({ id: uid(), name: "心情", enabled: true, cards: [] });
     state.cards.categories.push({ id: uid(), name: "意图", enabled: true, cards: [] });
+    state.cards.categories.push({ id: uid(), name: "问卷", enabled: true, cards: [] });
+    state.cards.categories.push({ id: uid(), name: "抉择", enabled: true, cards: [] });
+    state.cards.categories.push({ id: uid(), name: "吃什么", enabled: true, cards: [] });
+    state.cards.categories.push({ id: uid(), name: "查岗", enabled: true, cards: [] });
+    state.cards.categories.push({ id: uid(), name: "音乐", enabled: true, cards: [] });
     saveCards();
   }
 }
 
 init();
+/* ========== 修复：桌面加设置图标 ========== */
+(function patchSettings() {
+  const icons = store.get("desktopIcons", []);
+  if (!icons.some(i => i.action === "settings")) {
+    icons.push({ id: "settings", name: "设置", icon: "⚙️", action: "settings" });
+    store.set("desktopIcons", icons);
+    state.desktopIcons = icons;
+    renderDesktop();
+  }
+})();

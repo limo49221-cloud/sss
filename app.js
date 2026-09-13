@@ -1,5 +1,5 @@
 /* =====================================================
-   我的小站 · 完整版 v2
+   我的小站 · 完整版
    ===================================================== */
 
 const store = {
@@ -42,7 +42,6 @@ const state = {
   emojis: store.get("emojis", []),
   moments: store.get("moments", []),
   water: store.get("water", { date: "", count: 0, goal: 8 }),
-  songs: store.get("songs", []),
   desktopIcons: store.get("desktopIcons", null)
 };
 
@@ -55,7 +54,6 @@ function saveFavTa() { store.set("favoritesTa", state.favoritesTa); }
 function saveEmojis() { store.set("emojis", state.emojis); }
 function saveMoments() { store.set("moments", state.moments); }
 function saveWater() { store.set("water", state.water); }
-function saveSongs() { store.set("songs", state.songs); }
 function saveDesktopIcons() { store.set("desktopIcons", state.desktopIcons); }
 
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
@@ -122,12 +120,18 @@ const DEFAULT_ICONS = [
   { id: "pomodoro",  name: "番茄钟",   icon: "🍅", action: "pomodoro" },
   { id: "music",     name: "音乐",     icon: "🎵", action: "music" },
   { id: "books",     name: "推书",     icon: "📚", action: "books" },
-  { id: "search",    name: "搜索",     icon: "🔍", action: "search" }
+  { id: "search",    name: "搜索",     icon: "🔍", action: "search" },
+  { id: "settings",  name: "设置",     icon: "⚙️", action: "settings" }
 ];
 
 function renderDesktop() {
   if (!state.desktopIcons || !state.desktopIcons.length) {
     state.desktopIcons = JSON.parse(JSON.stringify(DEFAULT_ICONS));
+    saveDesktopIcons();
+  }
+  // 确保设置图标存在
+  if (!state.desktopIcons.some(i => i.action === "settings")) {
+    state.desktopIcons.push({ id: "settings", name: "设置", icon: "⚙️", action: "settings" });
     saveDesktopIcons();
   }
   const pagesEl = document.getElementById("desktopPages");
@@ -189,7 +193,6 @@ const SEARCH_PLATFORMS = [
   { name: "抖音",   icon: "🎵", url: "https://www.douyin.com/search/" }
 ];
 
-/* ========== 从字卡分类取 */
 function getCardsByCat(catName) {
   const cat = state.cards.categories.find(c => c.name === catName && c.enabled !== false);
   if (!cat) return [];
@@ -200,7 +203,6 @@ function drawFromCat(catName) {
   return list.length ? pick(list) : null;
 }
 
-/* ========== 聊天 ========== */
 let currentQuote = null;
 
 function openChat() {
@@ -451,7 +453,6 @@ function taReply() {
       intent: Math.random() * 100 < intentP ? drawIntent() : null
     };
 
-    // 随机触发各功能
     if (r < checkinP) {
       const c = drawFromCat("查岗");
       if (c) { addBotMessage(`【查岗】${c}`, opts); return; }
@@ -464,7 +465,6 @@ function taReply() {
       if (a && b && a !== b) { addBotMessage(`【让 TA 选】${a} / ${b}`, opts); return; }
     }
 
-    // 正常分支
     if (r < searchP) {
       const kwFixed = card.split(/\s+/)[0].slice(0, 10);
       const platform = SEARCH_PLATFORMS[Math.floor(Math.random() * SEARCH_PLATFORMS.length)];
@@ -516,6 +516,359 @@ function showNotification(msg) {
     setTimeout(() => n.remove(), 400);
   }, 3000);
 }
+function initInputBar() {
+  const input = document.getElementById("chatInput");
+  const send = document.getElementById("sendBtn");
+  input.addEventListener("input", () => { send.disabled = !input.value.trim(); });
+  input.addEventListener("keydown", e => {
+    if (e.key === "Enter") {
+      const v = input.value.trim();
+      if (v) { input.value = ""; send.disabled = true; sendMessage(v); }
+    }
+  });
+  send.addEventListener("click", () => {
+    const v = input.value.trim();
+    if (!v) return;
+    input.value = ""; send.disabled = true; sendMessage(v);
+  });
+  document.getElementById("imgBtn").addEventListener("click", () => document.getElementById("imgFile").click());
+  document.getElementById("imgFile").addEventListener("change", async () => {
+    const f = document.getElementById("imgFile").files[0];
+    if (!f) return;
+    const data = await compressImage(f, 1000, 0.8);
+    sendMessage("", { image: data });
+    document.getElementById("imgFile").value = "";
+  });
+  document.getElementById("emojiBtn").addEventListener("click", () => {
+    openModal("表情包", () => {
+      const wrap = document.createElement("div");
+      wrap.innerHTML = `<div class="row"><input class="input" id="emojiInput" placeholder="emoji 或文字"><button class="btn" id="emojiAddBtn">添加</button></div><div class="row"><input type="file" id="emojiFile" accept="image/*" hidden><button class="btn secondary" id="emojiImgBtn" style="width:100%">上传图片</button></div><div id="emojiList"></div>`;
+      const list = wrap.querySelector("#emojiList");
+      function render() {
+        list.innerHTML = "";
+        if (!state.emojis.length) { list.innerHTML = `<div class="empty">还没有表情</div>`; return; }
+        state.emojis.forEach((e, i) => {
+          const item = document.createElement("div");
+          item.className = "list-item";
+          const isImg = e.startsWith("data:");
+          item.innerHTML = `<div class="name" style="font-size:${isImg ? "0" : "22px"};">${isImg ? `<img src="${e}" style="width:40px;height:40px;object-fit:cover;border-radius:4px;">` : esc(e)}</div><div class="actions"><button data-send>发送</button><button class="danger" data-del>删除</button></div>`;
+          item.querySelector("[data-send]").addEventListener("click", () => {
+            if (isImg) sendMessage("", { image: e }); else sendMessage(e);
+            modal.classList.remove("open");
+          });
+          item.querySelector("[data-del]").addEventListener("click", () => { state.emojis.splice(i, 1); saveEmojis(); render(); });
+          list.appendChild(item);
+        });
+      }
+      render();
+      wrap.querySelector("#emojiAddBtn").addEventListener("click", () => {
+        const v = wrap.querySelector("#emojiInput").value.trim();
+        if (!v) return;
+        state.emojis.push(v); saveEmojis(); wrap.querySelector("#emojiInput").value = ""; render();
+      });
+      wrap.querySelector("#emojiImgBtn").addEventListener("click", () => wrap.querySelector("#emojiFile").click());
+      wrap.querySelector("#emojiFile").addEventListener("change", async () => {
+        const f = wrap.querySelector("#emojiFile").files[0];
+        if (!f) return;
+        const data = await compressImage(f, 300, 0.8);
+        state.emojis.push(data); saveEmojis(); render();
+      });
+      return wrap;
+    });
+  });
+  document.getElementById("voiceBtn").addEventListener("click", () => {
+    openModal("发送语音", () => {
+      const wrap = document.createElement("div");
+      wrap.innerHTML = `<div class="row"><input class="input" id="voiceText" placeholder="语音内容"></div><div class="row"><input class="input" id="voiceDurInput" type="number" value="5"></div><button class="btn" id="voiceSendBtn" style="width:100%">发送</button>`;
+      wrap.querySelector("#voiceSendBtn").addEventListener("click", () => {
+        const t = wrap.querySelector("#voiceText").value.trim();
+        const d = Number(wrap.querySelector("#voiceDurInput").value) || 5;
+        if (!t) return;
+        sendMessage(t, { isVoice: true, voiceDur: d });
+        modal.classList.remove("open");
+      });
+      return wrap;
+    });
+  });
+}
+
+document.getElementById("chatMenuBtn").addEventListener("click", () => {
+  document.getElementById("chatMenuModal").classList.add("open");
+});
+document.getElementById("chatMenuClose").addEventListener("click", () => {
+  document.getElementById("chatMenuModal").classList.remove("open");
+});
+document.querySelectorAll("#chatMenuModal .menu-item").forEach(item => {
+  item.addEventListener("click", () => {
+    const action = item.dataset.action;
+    document.getElementById("chatMenuModal").classList.remove("open");
+    if (action === "search") doSearch();
+    if (action === "fav") showFavorites();
+    if (action === "poke") doPoke();
+    if (action === "call") doCall();
+  });
+});
+
+function doSearch() {
+  openModal("搜索聊天记录", () => {
+    const wrap = document.createElement("div");
+    wrap.innerHTML = `<div class="row"><input class="input" id="searchKw" placeholder="关键词（可空）"></div><div class="row"><input class="input" type="date" id="searchDate"></div><button class="btn" id="searchBtn" style="width:100%">搜索</button><div id="searchResults" style="margin-top:12px;"></div>`;
+    const results = wrap.querySelector("#searchResults");
+    wrap.querySelector("#searchBtn").addEventListener("click", () => {
+      const kw = wrap.querySelector("#searchKw").value.trim();
+      const dateStr = wrap.querySelector("#searchDate").value;
+      let hits = state.messages.filter(m => m.text && !m.recalled);
+      if (kw) hits = hits.filter(m => m.text.includes(kw));
+      if (dateStr) hits = hits.filter(m => fmtDate(new Date(m.ts)) === dateStr);
+      results.innerHTML = "";
+      if (!hits.length) { results.innerHTML = `<div class="empty">没找到</div>`; return; }
+      hits.forEach(m => {
+        const item = document.createElement("div");
+        item.className = "list-item"; item.style.cursor = "pointer";
+        item.innerHTML = `<div class="name">${m.from === "me" ? "我" : esc(state.settings.taName)}：${esc(m.text)}<br><span style="font-size:12px;color:#999;">${m.time || ""}</span></div>`;
+        item.addEventListener("click", () => {
+          modal.classList.remove("open");
+          setTimeout(() => {
+            const target = document.getElementById("msg-" + m.id);
+            if (target) {
+              target.scrollIntoView({ behavior: "smooth", block: "center" });
+              const rowEl = target.querySelector(".msg-row") || target;
+              rowEl.style.transition = "background 0.3s";
+              rowEl.style.background = "rgba(255,235,59,0.4)";
+              setTimeout(() => { rowEl.style.background = ""; }, 1200);
+            }
+          }, 200);
+        });
+        results.appendChild(item);
+      });
+    });
+    return wrap;
+  });
+}
+
+function showFavorites() {
+  openModal("收藏", () => {
+    const wrap = document.createElement("div");
+    let currentTab = "mine";
+    wrap.innerHTML = `<div class="fav-tabs"><div class="fav-tab active" data-tab="mine">我的收藏</div><div class="fav-tab" data-tab="ta">TA的收藏</div></div><div id="favList"></div>`;
+    const list = wrap.querySelector("#favList");
+    function render() {
+      const arr = currentTab === "mine" ? state.favoritesMine : state.favoritesTa;
+      list.innerHTML = "";
+      if (!arr.length) { list.innerHTML = `<div class="empty">还没有收藏</div>`; return; }
+      arr.forEach((f, i) => {
+        const item = document.createElement("div");
+        item.className = "fav-item";
+        item.innerHTML = `<div class="fav-text">${esc(f.text)}</div><div class="fav-time">${f.from === "me" ? "我" : "TA"} · ${f.time}</div><div class="actions" style="margin-top:6px;"><button class="danger" data-del>删除</button></div>`;
+        item.querySelector("[data-del]").addEventListener("click", () => {
+          if (currentTab === "mine") { state.favoritesMine.splice(i, 1); saveFavMine(); }
+          else { state.favoritesTa.splice(i, 1); saveFavTa(); }
+          render();
+        });
+        list.appendChild(item);
+      });
+    }
+    render();
+    wrap.querySelectorAll(".fav-tab").forEach(tab => {
+      tab.addEventListener("click", () => {
+        currentTab = tab.dataset.tab;
+        wrap.querySelectorAll(".fav-tab").forEach(t => t.classList.toggle("active", t === tab));
+        render();
+      });
+    });
+    return wrap;
+  });
+}
+
+function doPoke() {
+  const pokeText = pick(state.pokeTexts) || "拍了拍";
+  state.messages.push({ id: uid(), type: "poke", text: `我${pokeText}`, ts: Date.now() });
+  saveMessages(); renderMessages();
+  if (Math.random() * 100 < state.settings.pokeBackProb) {
+    setTimeout(() => {
+      const backText = pick(state.pokeTexts) || "拍了拍";
+      state.messages.push({ id: uid(), type: "poke", text: `${state.settings.taName}${backText}`, ts: Date.now() });
+      saveMessages(); renderMessages();
+      if (Math.random() * 100 < state.settings.pokeCardProb) {
+        setTimeout(() => {
+          const card = drawCard();
+          if (card) addBotMessage(card, { isCard: true, mood: drawMood(), intent: drawIntent() });
+        }, 800);
+      }
+    }, 1500);
+  }
+}
+
+let callTimerId = null, callStartTs = 0;
+function doCall() {
+  if (Math.random() * 100 < state.settings.callRejectProb) {
+    state.messages.push({ id: uid(), type: "system", text: `对方已拒绝通话`, ts: Date.now() });
+    saveMessages(); renderMessages(); toast("对方已拒绝");
+    return;
+  }
+  document.getElementById("callName").textContent = state.settings.taName;
+  const av = document.getElementById("callAvatar");
+  if (state.settings.taAvatar) av.innerHTML = `<img src="${state.settings.taAvatar}">`;
+  else av.textContent = "TA";
+  document.getElementById("callTimer").textContent = "00:00:00";
+  showScreen("callScreen");
+  callStartTs = Date.now();
+  callTimerId = setInterval(updateCallTimer, 1000);
+}
+function updateCallTimer() {
+  const el = document.getElementById("callTimer");
+  if (!el) return;
+  const s = Math.floor((Date.now() - callStartTs) / 1000);
+  el.textContent = `${String(Math.floor(s/3600)).padStart(2,"0")}:${String(Math.floor((s%3600)/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
+}
+document.getElementById("hangupBtn").addEventListener("click", () => {
+  clearInterval(callTimerId);
+  const s = Math.floor((Date.now() - callStartTs) / 1000);
+  state.messages.push({ id: uid(), type: "system", text: `通话结束 · 时长 ${Math.floor(s/60)}分${s%60}秒`, ts: Date.now() });
+  saveMessages(); showScreen("chatApp"); renderMessages();
+});
+
+/* ========== 字卡管理 ========== */
+let batchMode = false;
+let selectedCards = new Set();
+
+function openCards() {
+  showScreen("cardsApp");
+  batchMode = false; selectedCards.clear();
+  document.getElementById("batchBar").style.display = "none";
+  renderCardsPage();
+}
+
+document.getElementById("batchToggleBtn").addEventListener("click", () => {
+  batchMode = !batchMode; selectedCards.clear();
+  document.getElementById("batchBar").style.display = batchMode ? "flex" : "none";
+  updateBatchCount(); renderCardsPage();
+});
+function updateBatchCount() { document.getElementById("batchCount").textContent = selectedCards.size; }
+
+function renderCardsPage() {
+  const body = document.getElementById("cardsBody");
+  body.innerHTML = "";
+  if (state.cards.categories.length === 0) {
+    body.innerHTML = `<div class="empty">还没有分类，点右上角“+ 分类”新建</div>`;
+    return;
+  }
+  state.cards.categories.forEach(cat => {
+    const div = document.createElement("div");
+    div.className = "list-item";
+    div.innerHTML = `<div class="name">${esc(cat.name)}<span style="color:#999;font-size:13px;">（${cat.cards.length} 张）</span></div><div class="actions"><button data-toggle>${cat.enabled === false ? "启用" : "停用"}</button><button data-open>打开</button><button class="danger" data-del>删除</button></div>`;
+    div.querySelector("[data-toggle]").addEventListener("click", () => { cat.enabled = cat.enabled === false ? true : false; saveCards(); renderCardsPage(); });
+    div.querySelector("[data-open]").addEventListener("click", () => openCategory(cat.id));
+    div.querySelector("[data-del]").addEventListener("click", () => {
+      if (confirm(`删除分类「${cat.name}」？`)) {
+        state.cards.categories = state.cards.categories.filter(c => c.id !== cat.id);
+        saveCards(); renderCardsPage();
+      }
+    });
+    body.appendChild(div);
+    if (batchMode) {
+      cat.cards.forEach(c => {
+        const item = document.createElement("div");
+        item.className = "list-item"; item.style.paddingLeft = "30px";
+        const checked = selectedCards.has(c.id) ? "checked" : "";
+        item.innerHTML = `<div class="name" style="display:flex;align-items:center;"><input type="checkbox" class="card-check" ${checked} data-id="${c.id}">${esc(c.text)}</div>`;
+        item.querySelector("input").addEventListener("change", e => {
+          if (e.target.checked) selectedCards.add(c.id); else selectedCards.delete(c.id);
+          updateBatchCount();
+        });
+        body.appendChild(item);
+      });
+    }
+  });
+}
+
+document.getElementById("selectAllBtn").addEventListener("click", () => {
+  const all = [];
+  state.cards.categories.forEach(cat => cat.cards.forEach(c => all.push(c.id)));
+  if (selectedCards.size === all.length) selectedCards.clear();
+  else all.forEach(id => selectedCards.add(id));
+  updateBatchCount(); renderCardsPage();
+});
+document.getElementById("batchCancelBtn").addEventListener("click", () => {
+  batchMode = false; selectedCards.clear();
+  document.getElementById("batchBar").style.display = "none";
+  renderCardsPage();
+});
+document.getElementById("batchDelBtn").addEventListener("click", () => {
+  if (!selectedCards.size) return alert("还没选");
+  if (!confirm(`删除选中的 ${selectedCards.size} 张？`)) return;
+  state.cards.categories.forEach(cat => { cat.cards = cat.cards.filter(c => !selectedCards.has(c.id)); });
+  selectedCards.clear(); saveCards(); updateBatchCount(); renderCardsPage();
+});
+document.getElementById("batchMoveBtn").addEventListener("click", () => {
+  if (!selectedCards.size) return alert("还没选");
+  const names = state.cards.categories.map(c => c.name).join(" / ");
+  const target = prompt(`移动到哪个分类？\n可选：${names}`);
+  if (!target) return;
+  const cat = state.cards.categories.find(c => c.name === target);
+  if (!cat) return alert("没找到这个分类");
+  const moved = [];
+  state.cards.categories.forEach(c => {
+    c.cards = c.cards.filter(card => {
+      if (selectedCards.has(card.id)) { moved.push(card); return false; }
+      return true;
+    });
+  });
+  moved.forEach(card => cat.cards.push(card));
+  selectedCards.clear(); saveCards(); updateBatchCount(); renderCardsPage();
+});
+document.getElementById("batchExportBtn").addEventListener("click", () => {
+  if (!selectedCards.size) return alert("还没选");
+  const out = [];
+  state.cards.categories.forEach(cat => cat.cards.forEach(c => { if (selectedCards.has(c.id)) out.push(c.text); }));
+  const blob = new Blob([out.join("\n")], { type: "text/plain;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "字卡导出.txt"; a.click();
+});
+
+function openCategory(catId) {
+  const cat = state.cards.categories.find(c => c.id === catId);
+  if (!cat) return;
+  openModal(`分类：${cat.name}`, () => {
+    const wrap = document.createElement("div");
+    wrap.innerHTML = `<textarea class="input" id="newCardInput" placeholder="输入字卡内容（可一次粘贴多行/空格分隔）" style="height:120px;padding:8px;font-family:inherit;resize:vertical;"></textarea><div class="row" style="margin-top:8px;"><button class="btn" id="addCardBtn" style="width:100%">添加</button></div><div id="cardList"></div>`;
+    const list = wrap.querySelector("#cardList");
+    function renderList() {
+      list.innerHTML = "";
+      if (!cat.cards.length) { list.innerHTML = `<div class="empty">还没有字卡</div>`; return; }
+      cat.cards.forEach((c, i) => {
+        const item = document.createElement("div");
+        item.className = "list-item";
+        item.innerHTML = `<div class="name">${esc(c.text)}</div><div class="actions"><button data-edit>编辑</button><button class="danger" data-del>删除</button></div>`;
+        item.querySelector("[data-edit]").addEventListener("click", () => {
+          const v = prompt("编辑字卡内容：", c.text);
+          if (v === null) return;
+          c.text = v.trim(); saveCards(); renderList(); toast("已保存");
+        });
+        item.querySelector("[data-del]").addEventListener("click", () => { cat.cards.splice(i, 1); saveCards(); renderList(); });
+        list.appendChild(item);
+      });
+    }
+    renderList();
+    const inp = wrap.querySelector("#newCardInput");
+    wrap.querySelector("#addCardBtn").addEventListener("click", () => {
+      const text = inp.value;
+      if (!text.trim()) return;
+      text.split(/[\n\s]+/).map(s => s.trim()).filter(Boolean).forEach(t => {
+        cat.cards.push({ id: uid(), text: t });
+      });
+      saveCards(); inp.value = ""; renderList(); toast("已添加");
+    });
+    return wrap;
+  });
+}
+document.getElementById("newCatBtn").addEventListener("click", () => {
+  const name = prompt("分类名称（如：日常 / 心情 / 意图 / 问卷 / 抉择 / 吃什么 / 查岗 / 音乐）");
+  if (!name) return;
+  state.cards.categories.push({ id: uid(), name: name.trim(), enabled: true, cards: [] });
+  saveCards(); renderCardsPage();
+});
 /* ========== 抉择 ========== */
 function openChoice() {
   showScreen("choiceApp");
@@ -523,75 +876,36 @@ function openChoice() {
 }
 function renderChoice() {
   const body = document.getElementById("choiceBody");
+  const choices = getCardsByCat("抉择");
   body.innerHTML = `
     <div class="paper-box">
-      <div class="row"><input class="input" id="choiceInput" placeholder="输入选项，回车添加"></div>
-      <div class="row"><button class="btn secondary" id="choiceAddBtn" style="width:100%">添加选项</button></div>
-      <div id="choiceList" style="margin-bottom:12px;"></div>
-      <div class="row">
-        <button class="btn" id="choiceSelfBtn" style="flex:1">我自己选</button>
-        <button class="btn" id="choiceTaBtn" style="flex:1;background:#576b95;">让 TA 选</button>
-      </div>
-      <div id="choicePickArea" style="display:none;margin-top:12px;"></div>
+      <button class="paper-btn" id="choiceSelfBtn">我自己随机选</button>
+      <button class="paper-btn" id="choiceTaBtn" style="background:#576b95;">让 TA 随机选</button>
+      <div class="paper-tag">选项库（${choices.length} 个，在字卡管理「抉择」分类里加）</div>
       <div id="choiceResult" class="paper-result" style="text-align:center;font-size:22px;font-weight:600;color:#07c160;display:none;"></div>
       <button class="btn secondary" id="choiceSendBtn" style="width:100%;margin-top:12px;display:none;">发到聊天</button>
     </div>
   `;
-  let choices = [];
   let lastResult = null;
-  const list = body.querySelector("#choiceList");
-  function renderList() {
-    list.innerHTML = "";
-    choices.forEach((c, i) => {
-      const item = document.createElement("div");
-      item.className = "list-item";
-      item.innerHTML = `<div class="name">${esc(c)}</div><div class="actions"><button class="danger" data-del>删除</button></div>`;
-      item.querySelector("[data-del]").addEventListener("click", () => { choices.splice(i, 1); renderList(); });
-      list.appendChild(item);
-    });
-  }
-  renderList();
-  const inp = body.querySelector("#choiceInput");
-  function addOne() {
-    const v = inp.value.trim(); if (!v) return;
-    choices.push(v); inp.value = ""; renderList();
-  }
-  body.querySelector("#choiceAddBtn").addEventListener("click", addOne);
-  inp.addEventListener("keydown", e => { if (e.key === "Enter") addOne(); });
-
+  const res = body.querySelector("#choiceResult");
+  const sendBtn = body.querySelector("#choiceSendBtn");
   body.querySelector("#choiceSelfBtn").addEventListener("click", () => {
-    if (choices.length < 2) return alert("至少两个选项");
-    const area = body.querySelector("#choicePickArea");
-    area.style.display = "block";
-    area.innerHTML = `<div style="font-size:14px;color:#666;margin-bottom:8px;">点一个选项：</div>`;
-    choices.forEach(c => {
-      const btn = document.createElement("div");
-      btn.className = "survey-opt";
-      btn.textContent = c;
-      btn.addEventListener("click", () => {
-        lastResult = { picked: c, who: "me" };
-        area.style.display = "none";
-        const res = body.querySelector("#choiceResult");
-        res.style.display = "block";
-        res.textContent = `你选了：${c}`;
-        body.querySelector("#choiceSendBtn").style.display = "block";
-      });
-      area.appendChild(btn);
-    });
+    if (choices.length < 2) return toast("去字卡管理「抉择」分类至少加 2 个选项");
+    const picked = choices[Math.floor(Math.random() * choices.length)];
+    lastResult = { picked, who: "me" };
+    res.style.display = "block";
+    res.textContent = `你选了：${picked}`;
+    sendBtn.style.display = "block";
   });
-
   body.querySelector("#choiceTaBtn").addEventListener("click", () => {
-    if (choices.length < 2) return alert("至少两个选项");
+    if (choices.length < 2) return toast("去字卡管理「抉择」分类至少加 2 个选项");
     const picked = choices[Math.floor(Math.random() * choices.length)];
     lastResult = { picked, who: "ta" };
-    body.querySelector("#choicePickArea").style.display = "none";
-    const res = body.querySelector("#choiceResult");
     res.style.display = "block";
     res.textContent = `${state.settings.taName} 选了：${picked}`;
-    body.querySelector("#choiceSendBtn").style.display = "block";
+    sendBtn.style.display = "block";
   });
-
-  body.querySelector("#choiceSendBtn").addEventListener("click", () => {
+  sendBtn.addEventListener("click", () => {
     if (!lastResult) return;
     if (lastResult.who === "me") sendMessage(`【抉择】我选了：${lastResult.picked}`);
     else sendMessage(`【抉择】${state.settings.taName} 选了：${lastResult.picked}`);
@@ -614,7 +928,7 @@ function renderWater() {
   }
   const w = state.water;
   body.innerHTML = `
-    <div class="water-circle" id="waterCircle">
+    <div class="water-circle">
       <div class="water-count">${w.count}</div>
       <div class="water-label">/ ${w.goal} 杯</div>
     </div>
@@ -626,13 +940,8 @@ function renderWater() {
       <button class="btn secondary" id="waterGoalBtn">设置目标（当前 ${w.goal} 杯）</button>
     </div>
   `;
-  body.querySelector("#waterAddBtn").addEventListener("click", () => {
-    w.count++; saveWater(); renderWater();
-  });
-  body.querySelector("#waterMinusBtn").addEventListener("click", () => {
-    if (w.count > 0) w.count--;
-    saveWater(); renderWater();
-  });
+  body.querySelector("#waterAddBtn").addEventListener("click", () => { w.count++; saveWater(); renderWater(); });
+  body.querySelector("#waterMinusBtn").addEventListener("click", () => { if (w.count > 0) w.count--; saveWater(); renderWater(); });
   body.querySelector("#waterGoalBtn").addEventListener("click", () => {
     const v = prompt("每天目标杯数：", w.goal);
     if (!v) return;
@@ -652,9 +961,7 @@ function openSearch() {
       </div>
       <div class="search-platforms">
         ${SEARCH_PLATFORMS.map((p, i) =>
-          `<button class="search-platform-btn" data-i="${i}">
-            <span class="pf-icon">${p.icon}</span>${p.name}
-          </button>`
+          `<button class="search-platform-btn" data-i="${i}"><span class="pf-icon">${p.icon}</span>${p.name}</button>`
         ).join("")}
       </div>
     </div>
@@ -715,7 +1022,7 @@ function renderSurvey() {
     const q = drawFromCat("问卷");
     if (!q) return toast("问卷库空了，去加几张");
     const pf = SEARCH_PLATFORMS[Math.floor(Math.random() * SEARCH_PLATFORMS.length)];
-    if (confirm(`TA 问你：${q}\n\n（点确定用 ${pf.name} 搜索，点取消跳过）`)) {
+    if (confirm(`TA 问你：${q}\n\n（点确定用 ${pf.name} 搜索）`)) {
       window.open(pf.url + encodeURIComponent(q), "_blank");
     }
   });
@@ -1143,13 +1450,3 @@ function init() {
 }
 
 init();
-/* ========== 修复：桌面加设置图标 ========== */
-(function patchSettings() {
-  const icons = store.get("desktopIcons", []);
-  if (!icons.some(i => i.action === "settings")) {
-    icons.push({ id: "settings", name: "设置", icon: "⚙️", action: "settings" });
-    store.set("desktopIcons", icons);
-    state.desktopIcons = icons;
-    renderDesktop();
-  }
-})();
